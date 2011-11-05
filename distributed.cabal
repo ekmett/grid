@@ -1,0 +1,47 @@
+name:          distributed
+category:      Distributed Computing
+version:       0.1
+license:       BSD3
+cabal-version: >= 1.10
+license-file:  LICENSE
+author:        Edward A. Kmett
+maintainer:    Edward A. Kmett <ekmett@gmail.com>
+stability:     experimental
+homepage:      http://github.com/ekmett/distributed/
+copyright:     Copyright (C) 2011 Edward A. Kmett
+synopsis:      Distributed heterogeneous computating
+description:   Distributed heterogeneous computating
+build-type:    Simple
+
+source-repository head
+  type: git
+  location: git://github.com/ekmett/distributed.git
+
+library
+  default-language: Haskell2010
+  other-extensions
+    GADTs,
+    Rank2Types,
+    TypeFamilies,
+    TypeOperators,
+    KindSignatures,
+    ConstraintKinds,
+    FlexibleContexts,
+    FlexibleInstances,
+    FunctionalDependencies,
+    GeneralizedNewtypeDeriving
+
+  build-depends:
+    base >= 4 && < 5,
+    transformers >= 0.2.0 && < 0.3,
+    containers >= 0.3.0.0 && < 0.5,
+    comonad >= 1.1.1.1 && < 1.2
+
+  exposed-modules:
+    Data.Distributed
+    Data.Distributed.Expression
+    Data.Distributed.Symantics
+    Data.Distributed.Local
+    Data.Distributed.AST
+
+  ghc-options: -Wall
