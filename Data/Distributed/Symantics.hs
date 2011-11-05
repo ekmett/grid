@@ -2,13 +2,9 @@
   GADTs,
   Rank2Types,
   TypeFamilies,
-  TypeOperators,
   KindSignatures,
-  ConstraintKinds,
-  FlexibleContexts,
   FlexibleInstances,
-  FunctionalDependencies,
-  GeneralizedNewtypeDeriving
+  ConstraintKinds
   #-}
 
 module Data.Distributed.Symantics
