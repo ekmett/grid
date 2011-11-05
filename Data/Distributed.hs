@@ -1,207 +1,135 @@
 {-# LANGUAGE
   GADTs,
-  ConstraintKinds,
-  TypeOperators,
-  FunctionalDependencies,
-  FlexibleInstances,
-  FlexibleContexts,
-  KindSignatures,
-  OverlappingInstances,
   TypeFamilies,
   DeriveFunctor,
+  TypeOperators,
+  KindSignatures,
+  ConstraintKinds,
+  FlexibleContexts,
+  FlexibleInstances,
   UndecidableInstances,
-  ImplicitParams
+  OverlappingInstances,
+  FunctionalDependencies,
+  GeneralizedNewtypeDeriving
   #-}
 
-import Data.Functor.Apply
+module Data.Distributed
+  ( Trivial(..)
+  , Sym(..)
+  , T(..)
+  , Id(..)
+  , Fun, fun
+  , Exp(..)
+  , E(..)
+  ) where
+
+import Control.Comonad
+
+class Trivial a
+instance Trivial a
 
 -- a very simple syntax/semantics
-class Apply t => Sym t where
+class Sym t where
   type Lit t :: * -> Constraint
+  type Lit t = Trivial
+  app  :: t (a -> b) -> t a -> t b
   lam  :: (t a -> t b) -> t (a -> b)
   lit  :: Lit t a => a -> t a
-
-let1 :: Sym t => t a -> (t a -> t b) -> t b
-let1 x f = lam f <.> x
+  let1 :: t a -> (t a -> t b) -> t b
+  let1 x f = lam f `app` x
 
 -- a trivial symantics transformer, used for type pattern matching in Fun
 newtype T t a = T { runT :: t a }
   deriving (Eq,Ord,Show,Functor)
 
-instance Apply t => Apply (T t) where
-  T f <.> T x = T (f <.> x)
+instance Extend t => Extend (T t) where
+  extend f (T t) = T (extend (f . T) t)
+
+instance Comonad t => Comonad (T t) where
+  extract (T t) = extract t
 
 instance Sym t => Sym (T t) where
   type Lit (T t) = Lit t
+  T f `app` T x = T (f `app` x)
   lam f = T $ lam $ runT . f . T
   lit a = T (lit a)
-
-class Trivial a
-instance Trivial a
+  let1 (T x) f = T $ let1 x $ runT . f . T
 
 -- local evaluation symantics
 newtype Id a = Id { runId :: a }
-  deriving (Eq,Ord,Show,Functor)
-
-instance Apply Id where
-  Id f <.> Id x = Id (f x)
+  deriving (Eq,Ord,Enum,Show,Functor,Num,Real,Floating,Fractional,Integral,RealFrac,RealFloat)
 
 instance Sym Id where
-  type Lit Id = Trivial
+  Id f `app` Id x = Id (f x)
   lam f = Id (runId . f . Id)
   lit = Id
-
-{-
-data HList (as :: [*]) where
-  Cons :: a -> HList as -> HList '(a:as)
-  Nil :: HList '[]
--}
+  let1 x f = f x
 
 data TList :: (* -> *) -> * -> * where
   Cons :: T t a -> TList t as -> TList t (a, as)
   Nil  :: TList t ()
 
-class Rev xs ys zs | xs ys -> zs, ys zs -> xs where
-  rev' :: TList t xs -> TList t ys -> TList t zs
+class Sym t => Cur t as r | as r -> t where
+  type CurF as r
+  uncur :: T t (CurF as r) -> TList t as -> r
+  cur :: (TList t as -> r) -> T t (CurF as r)
 
-instance Rev xs () xs where
-  rev' xs _ = xs
-
-instance Rev (y, xs) ys zs => Rev xs (y, ys) zs where
-  rev' xs (Cons y ys) = rev' (Cons y xs) ys
-
-rev :: Rev () ys zs => TList t ys -> TList t zs
-rev = rev' Nil
-
-app :: Sym t => t (a -> b) -> t a -> t b
-app f x = f <.> x
-
-class Sym t => SymList f t as r rs | t as -> f r rs, rs -> t as f r where
-  unc :: T t f -> TList t as -> r
-  cur :: (TList t as -> r) -> T t f
-  korma :: (TList t as -> r) -> rs
-  unkorma :: rs -> TList t as -> r
-
-instance Sym t => SymList a t () (T t a) (T t a) where
-  unc f Nil = f
+instance Sym t => Cur t () (T t a) where
+  type CurF () (T t a) = a
+  uncur f Nil = f
   cur f = f Nil
+
+instance Cur t as r => Cur t (a,as) r where
+  type CurF (a,as) r = a -> CurF as r
+  uncur f (Cons a as) = uncur (app f a) as
+  cur f = lam (\x -> cur (f . Cons x))
+
+recur :: Cur t as r => (TList t as -> r) -> TList t as -> r
+recur = uncur . cur
+
+class Cur t (FunL rs) (FunR rs) => Fun t rs | rs -> t where
+  type FunL rs
+  type FunR rs
+
+  korma :: (TList t (FunL rs) -> FunR rs) -> rs
+  unkorma :: rs -> TList t (FunL rs) -> FunR rs
+
+instance Sym t => Fun t (T t a) where
+  type FunL (T t a) = ()
+  type FunR (T t a) = T t a
   korma f = f Nil
   unkorma r _ = r
 
-instance SymList b t bs r rs => SymList (a -> b) t (a,bs) r (T t a -> rs) where
-  unc f (Cons a as) = unc (f <.> a) as
-  cur f = lam (\x -> cur (f . Cons x))
+instance Fun t rs => Fun t (T t a -> rs) where
+  type FunL (T t a -> rs) = (a, FunL rs)
+  type FunR (T t a -> rs) = FunR rs
   korma f x = korma (f . Cons x)
   unkorma f (Cons a as) = unkorma (f a) as
 
-type family FunB rs
-type instance FunB (T t a) = a
-type instance FunB (T t a -> rs) = a -> FunB rs
+fun :: Fun t rs => rs -> rs
+fun = korma . recur . unkorma
 
-type family FunT rs :: * -> *
-type instance FunT (T t a) = t
-type instance FunT (T t a -> rs) = t
-
-type family FunL rs
-type instance FunL (T t a) = ()
-type instance FunL (T t a -> rs) = (a,FunL rs)
-
-type family FunR rs
-type instance FunR (T t a) = a
-type instance FunR (T t a -> r) = FunR r
-
-class SymList (FunB rs) (FunT rs) (FunL rs) (FunR rs) rs => Fun rs
-instance SymList (FunB rs) (FunT rs) (FunL rs) (FunR rs) rs => Fun rs
-
-fun :: Fun rs => rs -> rs
-fun x = korma (unc (cur (unkorma x)))
-
-
-
-{-
-fun ::
-  (Fun o t as (T t a -> r)
-  , ApplyList (T t a -> i) t as o
-  ) => (T t a -> i) -> T t a -> r
-fun i = unpack (applyAll i)
--}
-
--- fun i = unpack (pack i)
-
-{-
-instance Fun (T t a -> 
-  funk f = f Nil -- applyAll f (rev as)
-  funk f a = funk f (Cons a as)
-
-class Collect t as where
-  collect :: (TList t as -> o) -> i
-
-instance Fun (T t a) t () (T t a) where
-  funk i Nil = i
-
-  apply f Nil = f
-  apply f (Cons a as) = pack (f <.> a) as
-
-  funk f as a = funk f (Cons a as)
-
-fun :: Fun i t l o => o -> o
-fun i = pack i
-
-instance Fun (T t bi) t cs o => Fun (T t (c -> bi)) t (x,xs) (T t c -> o) where
--}
-
-{-
--- variadic captured lambda abstractions
-class Fun (t :: * -> *) x | x -> t where
-  type FunL x -- :: [*]
-  funk :: T t a -> TList t (FunL x) -> T t a -> x
-
-fun :: 
-
-instance Fun t (T t a) where
-  type FunL (T t a) = ()
-  funk x Nil y = T (app x y)
-
-instance Fun t x => Fun t (T t a -> x) where
-  type FunL (T t a) = (a, FunL x)
-  funK 
-
-{-
-  pack :: x -> HList (FunH x) -> x
-  unpack :: (HList (FunH x) -> x) -> x
--}
-
-instance Fun t (T t a) where
-  type FunH (T t a) = () -- '[]
-  pack i Nil = i
-  unpack f = f Nil
-
-instance Fun t x => Fun t (T t a -> x) where
-  type FunH (T t a -> x) = (T t a, FunH x) -- a : FunH x
-  -- pack f (Cons a as) = pack (f a) as
-  unpack f a = unpack $ \as -> f (Cons a as)
-
-fun :: Fun t x => (T t a -> x) -> (T t a -> x)
-fun = undefined
-
-{-
 data E p where
   Var :: {-# UNPACK #-} !Int -> E p
   App :: E p -> E p -> E p
   Lam :: (E p -> E p) -> E p
+  Let :: E p -> (E p -> E p) -> E p
   Lit :: p a => a -> E p
 
+instance Show (E p) where
+  showsPrec d (Var i) = showParen (d > 10) $ showString "Var ..."
+  showsPrec d (App x y) = showParen (d > 10) $
+    showString "App " . showsPrec 11 x . showChar ' ' . showsPrec 11 y
+  showsPrec d (Lam f) = showParen (d >= 0) $
+    showString "Lam $ \\ ... -> " . showsPrec (-1) (f (Var 0))
+  showsPrec d (Lit _) = showParen (d > 10) $ showString "Lit ..."
+
 newtype Exp p a = Exp { runExp :: E p }
--}
+  deriving Show
 
-{-
-lam :: (Exp p a -> Exp p b) -> Exp p (a -> b)
-lam f = Exp $ Lam $ runExp . f . Exp
-
-app :: Exp p (a -> b) -> Exp p a -> Exp p b
-Exp f `app` Exp x = Exp $ App f x
-
-lit :: p a => a -> Exp p a
-lit a = Exp $ Lit a
--}
--}
+instance Sym (Exp p) where
+  type Lit (Exp p) = p
+  Exp f `app` Exp x = Exp (App f x)
+  lam f = Exp $ Lam $ runExp . f . Exp
+  lit a = Exp $ Lit a
+  let1 (Exp x) f = Exp $ Let x $ runExp . f . Exp
