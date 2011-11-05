@@ -1,6 +1,5 @@
 {-# LANGUAGE
   GADTs,
-  Rank2Types,
   TypeFamilies,
   TypeOperators,
   KindSignatures,
