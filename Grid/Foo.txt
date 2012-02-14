@@ -1,0 +1,5 @@
+a -> b -> c -> d -> IO e
+HCons a (HCons b (HCons c (HCons d Nil))) -> IO e
+a  -> HCons b (HCons c (HCons d Nil))) -> IO e
+HCons b (HCons c (HCons d Nil)) -> ReaderT a IO e
+b - c -> d -> ReaderT a IO e

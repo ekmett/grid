@@ -4,11 +4,11 @@
   ConstraintKinds
   #-}
 
-module Data.Distributed.AST
+module Grid.AST
   ( AST(..)
   ) where
 
-import Data.Distributed.Symantics
+import Grid.Symantics
 
 data AST p t a where
   Var  :: {-# UNPACK #-} !Int -> AST p t a
@@ -16,10 +16,10 @@ data AST p t a where
   Lam  :: (AST p t a -> AST p t b) -> AST p t (a -> b)
   Lit  :: p a => a -> AST p t a
   Prim :: t a -> AST p t a
-  Bool :: Bool -> AST p t Bool
   Iff  :: AST p t Bool -> AST p t a -> AST p t a -> AST p t a
   Let  :: AST p t a -> (AST p t a -> AST p t b) -> AST p t b
   Fix  :: (AST p t a -> AST p t a) -> AST p t a
+  Bool :: Bool -> AST p t Bool
 
 instance Symantics (AST p t) where
   type Lit (AST p t) = p

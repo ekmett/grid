@@ -1,41 +1,34 @@
-{-# LANGUAGE
-  GADTs,
-  TypeFamilies,
-  TypeOperators,
-  KindSignatures,
-  ConstraintKinds,
-  FlexibleContexts,
-  FlexibleInstances,
-  FunctionalDependencies,
-  GeneralizedNewtypeDeriving
-  #-}
-
-module Data.Distributed.Expression
-  (
-  -- * DSL
-    Exp(..)
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE FunctionalDependencies #-}
+{-# LANGUAGE UndecidableInstances #-}
+{-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE DefaultSignatures #-}
+{-# LANGUAGE FlexibleContexts  #-}
+{-# LANGUAGE RebindableSyntax #-}
+{-# LANGUAGE ConstraintKinds #-}
+{-# LANGUAGE KindSignatures #-}
+{-# LANGUAGE TypeOperators #-}
+{-# LANGUAGE TypeFamilies #-}
+{-# LANGUAGE Trustworthy #-}
+{-# LANGUAGE Rank2Types #-}
+{-# LANGUAGE GADTs #-}
+module Grid.Fun
+  ( Exp(..)
   , Fun
   , fun
-  , lit
-  , iff
-  , bool
-  , fix1
-  , let1
-  , lam
-  , app
   ) where
 
 import Control.Applicative
 import Control.Comonad
 import Control.Monad
 import Data.Foldable
+import Data.String
 import Data.Traversable
-import Data.Distributed.Symantics
+import Grid.Symantics
 
 -- | A trivial semantics transformer, used to avoid overlapping instances in Fun
-
-newtype Exp t a = Exp { runExp :: t a }
-  deriving
+newtype Exp t a = Exp { runExp :: t a } deriving
   ( Eq
   , Ord
   , Functor
@@ -55,50 +48,43 @@ instance Show (t a) => Show (Exp t a) where
 instance Symantics t => Symantics (Exp t) where
   type Lit (Exp t) = Lit t
   type Prim (Exp t) = Prim t
-  app_ = app
-  lam_ = lam
-  lit_ = lit
-  iff_ = iff
-  fix1_ = fix1
-  let1_ = let1
-  prim_ = prim
-  bool_ = bool
+  type EqT (Exp t) = EqT t
+  type OrdT (Exp t) = OrdT t
+  not_ (Exp a) = Exp (not_ a)
+  iff (Exp b) (Exp t) (Exp e) = Exp (iff b t e)
+  bool a = Exp (bool a)
+  Exp a .<  Exp b = Exp (a .<  b)
+  Exp a .<= Exp b = Exp (a .<= b)
+  Exp a .== Exp b = Exp (a .== b)
+  Exp a ./= Exp b = Exp (a ./= b)
+  Exp a .>= Exp b = Exp (a .>= b)
+  Exp a .>  Exp b = Exp (a .>  b)
+  Exp a .&& Exp b = Exp (a .&& b)
+  Exp a .|| Exp b = Exp (a .|| b)
+  lit a = Exp (lit a)
+  let_ (Exp x) f = Exp (let1 x (runExp . f . Exp))
+  prim a = Exp (prim a)
 
-app :: Symantics t => Exp t (a -> b) -> Exp t a -> Exp t b
+class Symantics t => FunSymantics t where
+  app_  :: t (a -> b) -> t a -> t b
+  lam_  :: (t a -> t b) -> t (a -> b)
+  fix1_ :: (t a -> t a) -> t a
+
+app :: FunSymantics t => Exp t (a -> b) -> Exp t a -> Exp t b
 Exp f `app` Exp x = Exp (app_ f x)
 {-# INLINE app #-}
 
-lam :: Symantics t => (Exp t a -> Exp t b) -> Exp t (a -> b)
+lam :: FunSymantics t => (Exp t a -> Exp t b) -> Exp t (a -> b)
 lam f = Exp $ lam_ $ runExp . f . Exp
 {-# INLINE lam #-}
 
-lit :: (Symantics t, Lit t a) => a -> Exp t a
-lit a = Exp (lit_ a)
-{-# INLINE lit #-}
-
-iff :: Symantics t => Exp t Bool -> Exp t a -> Exp t a -> Exp t a
-iff (Exp b) (Exp t) (Exp e) = Exp (iff_ b t e)
-{-# INLINE iff #-}
-
-bool :: Symantics t => Bool -> Exp t Bool
-bool b = Exp (bool_ b)
-{-# INLINE bool #-}
-
-let1 :: Symantics t => Exp t a -> (Exp t a -> Exp t b) -> Exp t b
-let1 (Exp x) f = Exp $ let1_ x $ runExp . f . Exp
-{-# INLINE let1 #-}
+fun :: Fun f => f -> f
+fun = korma . recur . unkorma
+{-# INLINE fun #-}
 
 fix1 :: Symantics t => (Exp t a -> Exp t a) -> Exp t a
 fix1 f = Exp $ fix1_ $ runExp . f . Exp
 {-# INLINE fix1 #-}
-
-prim :: Symantics t => Prim t a -> Exp t a
-prim b = Exp (prim_ b)
-{-# INLINE prim #-}
-
-fun :: Fun f => f -> f
-fun = korma . uncur . cur . unkorma
-{-# INLINE fun #-}
 
 -- Plumbing used to implement fun
 
@@ -106,13 +92,15 @@ data TList :: (* -> *) -> * -> * where
   Cons :: Exp t a -> TList t as -> TList t (a, as)
   Nil  :: TList t ()
 
-class Symantics (CurS as r) => Cur as r where
+class FunSymantics (CurS as r) => Cur as r where
   type CurF as r
   type CurS as r :: * -> *
   uncur :: Exp (CurS as r) (CurF as r) -> TList (CurS as r) as -> r
   cur :: (TList (CurS as r) as -> r) -> Exp (CurS as r) (CurF as r)
+  recur :: (TList (CurS as r) as -> r) -> TList (CurS as r) as -> r
+  recur = uncur . cur
 
-instance Symantics t => Cur () (Exp t a) where
+instance FunSymantics t => Cur () (Exp t a) where
   type CurF () (Exp t a) = a
   type CurS () (Exp t a) = t
   uncur f Nil = f
@@ -131,7 +119,7 @@ class (Cur (FunL rs) (FunR rs), CurS (FunL rs) (FunR rs) ~ FunS rs) => Fun rs wh
   korma :: (TList (FunS rs) (FunL rs) -> FunR rs) -> rs
   unkorma :: rs -> TList (FunS rs) (FunL rs) -> FunR rs
 
-instance Symantics t => Fun (Exp t a) where
+instance FunSymantics t => Fun (Exp t a) where
   type FunS (Exp t a) = t
   type FunL (Exp t a) = ()
   type FunR (Exp t a) = Exp t a
@@ -146,3 +134,4 @@ instance (Fun rs, FunS rs ~ t) => Fun (Exp t a -> rs) where
   unkorma f (Cons a as) = unkorma (f a) as
   unkorma _ _ = error "unkorma: Nil"
 
+-- default (Int, Float, Exp Local Bool, Exp Local Int, Exp Local Float)
