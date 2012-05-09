@@ -9,9 +9,9 @@
 {-# LANGUAGE KindSignatures #-}
 {-# LANGUAGE TypeOperators #-}
 {-# LANGUAGE TypeFamilies #-}
+{-# LANGUAGE Trustworthy #-}
 {-# LANGUAGE Rank2Types #-}
 {-# LANGUAGE GADTs #-}
-{-# LANGUAGE Safe #-}
 module Grid.Symantics
   ( Trivial
   -- * Syntax/Semantics
@@ -24,11 +24,9 @@ module Grid.Symantics
   ) where
 
 import Control.Applicative
-import Control.Comonad
 import Control.Monad
-import Data.Foldable
 import Data.String
-import Data.Traversable
+import GHC.Prim
 import Prelude
 
 class Trivial a

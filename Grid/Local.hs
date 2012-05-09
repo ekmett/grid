@@ -1,6 +1,6 @@
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 
-module Parasol.Local
+module Grid.Local
   ( Local(..)
   , eval
   ) where
@@ -10,8 +10,8 @@ import Control.Comonad
 import Control.Monad.Fix
 import Data.Foldable
 import Data.Traversable
-import Parasol.Symantics
-import Parasol.Expression
+import Grid.Symantics
+import Grid.Exp
 
 newtype Local a = Local { runLocal :: a }
   deriving (Eq,Ord,Num,Enum,Fractional,Floating,Real,Integral,RealFrac,RealFloat)

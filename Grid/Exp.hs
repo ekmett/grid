@@ -13,7 +13,7 @@
 {-# LANGUAGE Trustworthy #-}
 {-# LANGUAGE Rank2Types #-}
 {-# LANGUAGE GADTs #-}
-module Grid.Fun
+module Grid.Exp
   ( Exp(..)
   , Fun
   , fun
@@ -26,6 +26,7 @@ import Data.Foldable
 import Data.String
 import Data.Traversable
 import Grid.Symantics
+import Prelude
 
 -- | A trivial semantics transformer, used to avoid overlapping instances in Fun
 newtype Exp t a = Exp { runExp :: t a } deriving
@@ -62,7 +63,7 @@ instance Symantics t => Symantics (Exp t) where
   Exp a .&& Exp b = Exp (a .&& b)
   Exp a .|| Exp b = Exp (a .|| b)
   lit a = Exp (lit a)
-  let_ (Exp x) f = Exp (let1 x (runExp . f . Exp))
+  let_ (Exp x) f = Exp (let_ x (runExp . f . Exp))
   prim a = Exp (prim a)
 
 class Symantics t => FunSymantics t where
